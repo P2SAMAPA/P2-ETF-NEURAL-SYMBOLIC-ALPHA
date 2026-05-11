@@ -55,11 +55,10 @@ def main():
                     feature_names=[f"lag_{l}" for l in config.FEATURE_LAGS]
                 )
                 success = miner.fit(series, config.FEATURE_LAGS)
-                if not success:
+                if not success or miner.model is None:
                     continue
-                # Evaluate model on a validation period (e.g., last 20% of the window)
-                # For simplicity, we use the last 50 days of the window to compute correlation
-                # Build features and target again (same as inside fit, but we can reuse)
+
+                # Evaluate model on a validation period (last 50 days of the window)
                 X_val = []
                 y_val = []
                 values = series.values
@@ -71,15 +70,15 @@ def main():
                         y_val.append(values[i + 1])
                 if len(X_val) < 10:
                     continue
-                # Predict using the discovered formula (need to define a predict method that takes a row)
-                # We'll use the miner's model.predict (PySRRegressor) which expects a 2D array
+
                 try:
                     y_pred = miner.model.predict(X_val)
-                except:
+                except Exception:
                     continue
+
                 if np.std(y_pred) < 1e-8:
                     continue
-                corr = np.corrcoef(y_pred, y_val)[0,1]
+                corr = np.corrcoef(y_pred, y_val)[0, 1]
                 if corr > best_corr:
                     best_corr = corr
                     best_window = win
