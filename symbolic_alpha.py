@@ -22,44 +22,29 @@ class SymbolicAlphaMiner:
         self.best_expression_ = None
         self.complexity_ = None
         self.mse_ = None
-        # Store lag order for prediction
         self._feature_lags = None
 
     def _prepare_features(self, returns_series, feature_lags):
-        """
-        Build feature matrix X (each row corresponds to a date)
-        and target y (next day return).
-        """
         X = []
         y = []
         values = returns_series.values
         for i in range(max(feature_lags), len(values) - 1):
-            row = []
-            for lag in feature_lags:
-                row.append(values[i - lag])
+            row = [values[i - lag] for lag in feature_lags]
             X.append(row)
-            y.append(values[i + 1])   # tomorrow's return
-        X = np.array(X)
-        y = np.array(y)
-        return X, y
+            y.append(values[i + 1])
+        return np.array(X), np.array(y)
 
     def fit(self, returns_series, feature_lags):
-        """
-        Run symbolic regression on the last `window` days of returns.
-        """
-        # Use only the most recent `window` days
         series = returns_series.iloc[-self.window:]
         X, y = self._prepare_features(series, feature_lags)
         if len(X) < 50:
             return False
 
-        # Store feature lags and names for later prediction
         self._feature_lags = feature_lags
         if self.feature_names is None:
             self.feature_names = [f"lag_{lag}" for lag in feature_lags]
-        self._feature_names_internal = self.feature_names
 
-        # PySR model with CORRECT loss parameter (lowercase "mse")
+        # No elementwise_loss parameter – defaults to MSE (L2DistLoss)
         model = PySRRegressor(
             niterations=self.niterations,
             populations=self.populations,
@@ -67,7 +52,6 @@ class SymbolicAlphaMiner:
             unary_operators=["square", "sqrt", "log1p", "tanh", "sin", "cos"],
             parsimony=self.parsimony,
             maxsize=self.max_complexity,
-            elementwise_loss="mse",                # ✅ FIXED
             model_selection="best",
             progress=False,
             verbosity=0,
@@ -75,7 +59,6 @@ class SymbolicAlphaMiner:
         )
         try:
             model.fit(X, y, variable_names=self.feature_names)
-            # Get best equation
             best = model.get_best()
             if best is None:
                 return False
@@ -89,11 +72,6 @@ class SymbolicAlphaMiner:
             return False
 
     def predict(self, last_returns):
-        """
-        Apply the discovered formula to the most recent feature vector
-        (last `feature_lags` returns) to generate the alpha factor.
-        `last_returns` should be a list or array of length equal to the number of lags.
-        """
         if self.model is None or self._feature_lags is None:
             return 0.0
         last_returns = np.asarray(last_returns).reshape(1, -1)
