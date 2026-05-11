@@ -22,7 +22,7 @@ class SymbolicAlphaMiner:
         self.best_expression_ = None
         self.complexity_ = None
         self.mse_ = None
-        # Store lag order used during fit, for predict
+        # Store lag order for prediction
         self._feature_lags = None
 
     def _prepare_features(self, returns_series, feature_lags):
@@ -57,18 +57,17 @@ class SymbolicAlphaMiner:
         self._feature_lags = feature_lags
         if self.feature_names is None:
             self.feature_names = [f"lag_{lag}" for lag in feature_lags]
-        # For predict, we need the same names
         self._feature_names_internal = self.feature_names
 
         # PySR model with CORRECT loss parameter (lowercase "mse")
         model = PySRRegressor(
             niterations=self.niterations,
             populations=self.populations,
-            binary_operators=self.operators,       # only binary operators here
+            binary_operators=self.operators,
             unary_operators=["square", "sqrt", "log1p", "tanh", "sin", "cos"],
             parsimony=self.parsimony,
             maxsize=self.max_complexity,
-            elementwise_loss="mse",                # ✅ FIXED: was loss="MSE"
+            elementwise_loss="mse",                # ✅ FIXED
             model_selection="best",
             progress=False,
             verbosity=0,
@@ -97,8 +96,6 @@ class SymbolicAlphaMiner:
         """
         if self.model is None or self._feature_lags is None:
             return 0.0
-
-        # Ensure input is a 2D array (one row)
         last_returns = np.asarray(last_returns).reshape(1, -1)
         try:
             return float(self.model.predict(last_returns)[0])
