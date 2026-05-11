@@ -1,6 +1,7 @@
 """
 Trainer for Neural Symbolic Alpha: per ETF, test three windows, pick the one maximizing correlation
 between predicted alpha and actual next‑day return, then save best expression.
+Ranking is biased toward higher‑return ETFs by combining correlation and average return.
 """
 
 import pandas as pd
@@ -36,6 +37,12 @@ def main():
                 print(f"  {ticker}: insufficient data")
                 continue
 
+            # Optional: skip negative average return ETFs
+            # avg_ret = series.mean() * 252
+            # if avg_ret <= 0:
+            #     print(f"  {ticker}: negative average return, skipping")
+            #     continue
+
             best_corr = -np.inf
             best_window = None
             best_miner = None
@@ -59,13 +66,13 @@ def main():
                 if not success or miner.model is None:
                     continue
 
-                # Evaluate model on a validation period (last 50 days of the window)
+                # Validation on last 50 days of the training window
                 X_val = []
                 y_val = []
                 values = series.values
                 lags = config.FEATURE_LAGS
                 for i in range(max(lags), len(values) - 1):
-                    if i >= len(values) - 50:   # last 50 observations
+                    if i >= len(values) - 50:
                         row = [values[i - lag] for lag in lags]
                         X_val.append(row)
                         y_val.append(values[i + 1])
@@ -92,18 +99,32 @@ def main():
                 print(f"  {ticker}: no valid model")
                 continue
 
-            print(f"  {ticker}: best window {best_window} days, correlation {best_corr:.3f}")
+            # Compute average return over the same validation period
+            values = series.values
+            lags = config.FEATURE_LAGS
+            y_val = []
+            for i in range(max(lags), len(values) - 1):
+                if i >= len(values) - 50:
+                    y_val.append(values[i + 1])
+            avg_return = np.mean(y_val) if y_val else 0.0
+
+            print(f"  {ticker}: best window {best_window} days, correlation {best_corr:.3f}, avg_return {avg_return:.6f}")
             universe_results[ticker] = {
                 "expression": str(best_expression),
                 "complexity": int(best_complexity),
                 "mse": float(best_mse),
                 "validation_correlation": float(best_corr),
+                "avg_return": float(avg_return),
                 "selected_window": best_window
             }
 
-        # Rank ETFs by validation correlation
-        sorted_etfs = sorted(universe_results.items(), key=lambda x: x[1]["validation_correlation"], reverse=True)
-        top_etfs = [{"ticker": t, "correlation": v["validation_correlation"]} for t, v in sorted_etfs[:config.TOP_N]]
+        # Rank ETFs by combined score = correlation * avg_return
+        # (Higher returns and higher predictability get higher rank)
+        for ticker, data in universe_results.items():
+            data["combined_score"] = data["validation_correlation"] * data["avg_return"]
+
+        sorted_etfs = sorted(universe_results.items(), key=lambda x: x[1]["combined_score"], reverse=True)
+        top_etfs = [{"ticker": t, "combined_score": v["combined_score"]} for t, v in sorted_etfs[:config.TOP_N]]
         all_results[universe_name] = {
             "top_expressions": top_etfs,
             "all_tickers": universe_results
@@ -115,7 +136,7 @@ def main():
         json.dump({"run_date": config.TODAY, "universes": all_results}, f, indent=2)
 
     push_results.push_daily_result(local_path)
-    print("\n=== Neural Symbolic Alpha complete ===")
+    print("\n=== Neural Symbolic Alpha complete (biased toward higher-return ETFs) ===")
 
 if __name__ == "__main__":
     main()
