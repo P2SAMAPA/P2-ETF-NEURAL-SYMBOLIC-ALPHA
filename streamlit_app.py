@@ -59,7 +59,7 @@ if not universes:
     st.warning("No universe data.")
     st.stop()
 
-st.header("📈 Top Discovered Alpha Factors (by validation correlation)")
+st.header("📈 Top Discovered Alpha Factors (by combined return-predictability score)")
 
 for universe_name, uni_data in universes.items():
     top = uni_data.get("top_expressions", [])
@@ -70,8 +70,9 @@ for universe_name, uni_data in universes.items():
     for i, item in enumerate(top):
         with cols[i]:
             ticker = item["ticker"]
-            corr = item["correlation"]
-            st.metric(ticker, f"ρ = {corr:.3f}", "alpha strength")
+            # Support both new 'combined_score' and old 'correlation'
+            score = item.get("combined_score", item.get("correlation", 0.0))
+            st.metric(ticker, f"score = {score:.4f}", "alpha strength")
             # Show the expression if available
             ticker_data = uni_data["all_tickers"].get(ticker, {})
             expr = ticker_data.get("expression", "N/A")
@@ -92,15 +93,17 @@ if selected:
         for ticker, info in all_tickers.items():
             rows.append({
                 "ETF": ticker,
-                "Validation Corr": info["validation_correlation"],
-                "Complexity": info["complexity"],
-                "MSE": info["mse"],
-                "Window (days)": info["selected_window"],
-                "Formula snippet": info["expression"][:50] + "..."
+                "Validation Corr": info.get("validation_correlation", 0.0),
+                "Avg Return": info.get("avg_return", 0.0),
+                "Combined Score": info.get("combined_score", 0.0),
+                "Complexity": info.get("complexity", 0),
+                "MSE": info.get("mse", 0.0),
+                "Window (days)": info.get("selected_window", 0),
+                "Formula snippet": info.get("expression", "")[:50] + "..."
             })
-        df = pd.DataFrame(rows).sort_values("Validation Corr", ascending=False)
+        df = pd.DataFrame(rows).sort_values("Combined Score", ascending=False)
         st.dataframe(df, use_container_width=True, hide_index=True)
     else:
         st.info("No data for this universe.")
 
-st.caption("Best expression per ETF is selected by validation correlation on out‑of‑window data. Higher correlation = more predictive alpha factor.")
+st.caption("Best expression per ETF is selected by validation correlation. The combined score (correlation × average return) ranks ETFs for higher return potential.")
