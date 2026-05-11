@@ -22,6 +22,8 @@ class SymbolicAlphaMiner:
         self.best_expression_ = None
         self.complexity_ = None
         self.mse_ = None
+        # Store lag order used during fit, for predict
+        self._feature_lags = None
 
     def _prepare_features(self, returns_series, feature_lags):
         """
@@ -30,7 +32,6 @@ class SymbolicAlphaMiner:
         """
         X = []
         y = []
-        dates = returns_series.index
         values = returns_series.values
         for i in range(max(feature_lags), len(values) - 1):
             row = []
@@ -52,19 +53,22 @@ class SymbolicAlphaMiner:
         if len(X) < 50:
             return False
 
-        # Create feature names
+        # Store feature lags and names for later prediction
+        self._feature_lags = feature_lags
         if self.feature_names is None:
             self.feature_names = [f"lag_{lag}" for lag in feature_lags]
+        # For predict, we need the same names
+        self._feature_names_internal = self.feature_names
 
-        # PySR model
+        # PySR model with CORRECT loss parameter (lowercase "mse")
         model = PySRRegressor(
             niterations=self.niterations,
             populations=self.populations,
-            binary_operators=self.operators,
+            binary_operators=self.operators,       # only binary operators here
             unary_operators=["square", "sqrt", "log1p", "tanh", "sin", "cos"],
             parsimony=self.parsimony,
             maxsize=self.max_complexity,
-            loss="MSE",
+            elementwise_loss="mse",                # ✅ FIXED: was loss="MSE"
             model_selection="best",
             progress=False,
             verbosity=0,
@@ -73,9 +77,12 @@ class SymbolicAlphaMiner:
         try:
             model.fit(X, y, variable_names=self.feature_names)
             # Get best equation
+            best = model.get_best()
+            if best is None:
+                return False
             self.best_expression_ = model.sympy()
-            self.complexity_ = model.get_best()["complexity"]
-            self.mse_ = model.get_best()["loss"]
+            self.complexity_ = best["complexity"]
+            self.mse_ = best["loss"]
             self.model = model
             return True
         except Exception as e:
@@ -86,17 +93,17 @@ class SymbolicAlphaMiner:
         """
         Apply the discovered formula to the most recent feature vector
         (last `feature_lags` returns) to generate the alpha factor.
+        `last_returns` should be a list or array of length equal to the number of lags.
         """
-        if self.model is None:
+        if self.model is None or self._feature_lags is None:
             return 0.0
-        # Build the feature vector: lags in the same order as during training
-        # We need to know the lag order; store during fit
-        # For simplicity, we use the model.predict directly if we have the same X structure.
-        # In PySR, we can pass a single row as a DataFrame with column names.
-        if not hasattr(self, 'feature_names_'):
+
+        # Ensure input is a 2D array (one row)
+        last_returns = np.asarray(last_returns).reshape(1, -1)
+        try:
+            return float(self.model.predict(last_returns)[0])
+        except Exception:
             return 0.0
-        # Assuming last_returns is a dict or array of length len(feature_names_)
-        return float(self.model.predict([last_returns])[0])
 
     def get_expression_string(self):
         if self.best_expression_ is None:
