@@ -10,13 +10,16 @@ import warnings
 
 class SymbolicAlphaMiner:
     def __init__(self, window=252, niterations=500, populations=30, parsimony=1.0,
-                 max_complexity=20, operators=None, feature_names=None):
+                 max_complexity=20, binary_operators=None, unary_operators=None, feature_names=None):
         self.window = window
         self.niterations = niterations
         self.populations = populations
         self.parsimony = parsimony
         self.max_complexity = max_complexity
-        self.operators = operators or ["+", "-", "*", "/", "square", "sqrt", "log1p", "tanh", "sin", "cos"]
+        # Default binary operators (only proper binary operators)
+        self.binary_operators = binary_operators or ["+", "-", "*", "/"]
+        # Default unary operators
+        self.unary_operators = unary_operators or ["square", "sqrt", "log1p", "tanh", "sin", "cos"]
         self.feature_names = feature_names
         self.model = None
         self.best_expression_ = None
@@ -44,12 +47,12 @@ class SymbolicAlphaMiner:
         if self.feature_names is None:
             self.feature_names = [f"lag_{lag}" for lag in feature_lags]
 
-        # No elementwise_loss parameter – defaults to MSE (L2DistLoss)
+        # PySR model – separate binary and unary operators
         model = PySRRegressor(
             niterations=self.niterations,
             populations=self.populations,
-            binary_operators=self.operators,
-            unary_operators=["square", "sqrt", "log1p", "tanh", "sin", "cos"],
+            binary_operators=self.binary_operators,   # only + - * /
+            unary_operators=self.unary_operators,     # square, sqrt, log1p, tanh, sin, cos
             parsimony=self.parsimony,
             maxsize=self.max_complexity,
             model_selection="best",
