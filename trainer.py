@@ -51,7 +51,8 @@ def main():
                     populations=config.POPULATIONS,
                     parsimony=config.PARSIMONY,
                     max_complexity=config.MAX_COMPLEXITY,
-                    operators=config.OPERATORS,
+                    binary_operators=["+", "-", "*", "/"],
+                    unary_operators=["square", "sqrt", "log1p", "tanh", "sin", "cos"],
                     feature_names=[f"lag_{l}" for l in config.FEATURE_LAGS]
                 )
                 success = miner.fit(series, config.FEATURE_LAGS)
@@ -100,7 +101,7 @@ def main():
                 "selected_window": best_window
             }
 
-        # Rank ETFs by validation correlation (higher = better alpha)
+        # Rank ETFs by validation correlation
         sorted_etfs = sorted(universe_results.items(), key=lambda x: x[1]["validation_correlation"], reverse=True)
         top_etfs = [{"ticker": t, "correlation": v["validation_correlation"]} for t, v in sorted_etfs[:config.TOP_N]]
         all_results[universe_name] = {
